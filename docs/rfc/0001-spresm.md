@@ -24,9 +24,9 @@ Usually, of course, these two things would happen in different places
 -- for example, a continuous integration pipeline would build the
 configuration image when you pushed to a pull request, then it would
 be tested (e.g., its output linted) and the results reported
-back. Once merged, it would be built again and run through another
-battery of tests, before being pushed to the image repository and
-released into the cluster.
+back. Once merged, the configuration would be built from master, and
+run through another battery of tests, before being pushed to the image
+repository and released to the running system.
 
 ## Motivation
 
@@ -74,8 +74,8 @@ content.
 **Why not just use Helm?**
 
 Helm has some quirks and limitations, but certainly plenty of people
-think it's good enough. You can still use Helm charts -- the point of
-Spresm is so that the rest of the system doesn't depend on you using
+think it's good enough. You can keep using Helm charts with Spresm --
+the point is that the rest of the system doesn't depend on you using
 Helm charts, or any other specific tooling.
 
 **Shouldn't my configuration be in git?**
@@ -85,6 +85,65 @@ code. Packaging it into images is a means of delivery, not a change of
 methodology.
 
 ## Design
+
+### Mechanism
+
+The basic mechanism for evaluation is this:
+
+ - `spresm` assembles the input parameters to the configuration, from
+   the files or individual paramaters given to it;
+
+ - the entrypoint of the container in question is run, mounting an
+   output directory, as well as the parameters at a conventional
+   location and supplying the output directory as an environment
+   variable;
+
+ - when complete, the files in the output directory are used as the
+   result.
+
+### Using Spresm locally
+
+You can run a container locally to generate the configuration, either
+in a build script, or just to eyeball it:
+
+```bash
+$ spresm generate --stdout app:v1.0.3 --values local.yaml
+```
+
+### Using Spresm in continuous integration
+
+Spresm might feature in a few places in a continuous integration
+pipeline:
+
+ - it could be invoked on a set of parameters particular to the
+   environment, then checked with linting and so on, to verify that
+   the configuration will work in that environment (e.g., a cluster)
+
+ - it could be used as the last step of a delivery pipeline, to
+   generate the configuration that will be applied to a running system
+
+ - the definition of the pipeline might itself be packaged in an
+   image, and applied with `spresm`.
+
+### Using Spresm to drive a GitOps pipeline
+
+You often want to see the effect that a configuration change will make
+to the running system, and this is usually easier to evaluate as data;
+e.g., as YAMLs.
+
+For this purpose, you can keep a git repository of YAML files, and use
+`spresm` to splat new configuration into it. That not only gives you
+diffs of the data, but means you can use that git repository as the
+system of record for GitOps.
+
+### Using Spresm as an operator
+
+Spresm could be tooled as an operator to run in Kubernetes. This would
+watch a particular kind of custom resource, which specified the image
+version as well as values from various sources, and apply the
+configuration generated whenever anything changed.
+
+---
 
 _Describe here the design of the change._
 
@@ -120,8 +179,13 @@ design is superior._
 
 ## Unresolved questions
 
+ - How is this different to ...
+   - Draft -- draft delivers code to a cluster, rather than configuration
+   - Skaffold
+   - Cloud-native Buildpacks
+   - Helm
+
 _Keep track here of questions that come up while this is a draft.
 Ideally, there will be nothing unresolved by the time the RFC is
 accepted. It is OK to resolve a question by explaining why it
 does not need to be answered_ yet _._
-
