@@ -162,6 +162,40 @@ The porcelain commands in Spresm are largely about importing and
 updating packages, but include some conveniences for creating
 packages, trouble-shooting, and integration with other systems.
 
+#### Main commands
+
+**Import a package into the local configuration**
+
+    spresm import image org/app:v1.0.0 ./app/
+    spresm import chart org/app:v1.0.0 ./app/
+
+This fetches anything it needs (i.e., the image or the chart) and
+evaluates it, writing the output files to `app/`.
+
+    spresm import git https://github.com/org/app.git/config app/
+
+This fetches the git repository (everything up to `app.git`) and
+copies the files from `./config` in the repository into `app/`.
+
+All of these record the provenance of the config in app/, so that
+`spresm update` can fetch another version of the package, and
+re-evaluate it.
+
+**Update a package to another version**
+
+    spresm update --version v1.0.1 ./app/
+
+This fetches another version of the configuration package, and merges
+it with any changes made to the last version. If the upstream is an
+image or chart, it is re-run to get the files to merge.
+
+**Update the expanded package based on input values**
+
+    spresm update --input ./app/
+
+This runs and merges the package again, with (possibly) new input
+values but without changing the version.
+
 #### Building packages
 
 For convenience in building packages, Spresm has a set of archetypal
