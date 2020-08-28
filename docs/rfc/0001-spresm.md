@@ -3,30 +3,58 @@
 ## Summary
 
 This RFC proposes the development of Spresm, which is a tool for
-packaging configuration as container images.
+dealing with packages of configuration.
+
+You can install and update packages from container images, Helm
+charts, or git repos. Installing imports and expands the configuration
+into your working directory. Updating merges upstream changes with
+those you have made locally.
+
+Spresm uses container images for distributing configuration that comes
+as code. You can build such containers with `spresm build`, or
+construct them with a Dockerfile or a build pack.
+
+As a special case, `spresm` also lets you treat Helm charts as
+packages, in the same way as container images.
 
 ## Example
 
 ```bash
-app$ # builds an image from the jk code in the current directory, using a buildpack
-app$ spresm build --buildpack jk --image app:$(git revparse HEAD) .
-Created image app:a79a826287f8c4ea63efbb3a356423e0d6ec6d52
-app$ # uses the image to generate the configuration into /tmp/appconfig,
-app$ # supplying some configuration
-app$ spresm generate app:a79a826287f8c4ea63efbb3a356423e0d6ec6d52 --values=local.yaml -o /tmp/appconfig
-Writing to /tmp/appconfig/ ...
-/tmp/appconfig/deployment.yaml
-/tmp/appconfig/service.yaml
-/tmp/appconfig/ingress.yaml
+# install an image as a package
+app$ spresm import image app:v1.0.0 ./appconfig
+Writing to ./appconfig/ ...
+./appconfig/Spresmfile
+./appconfig/deployment.yaml
+./appconfig/service.yaml
+./appconfig/ingress.yaml
+app$ git add ./appconfig
+app$ git commit -m "Initial import of app:v1.0.0"
+
+# edit the expanded configuration
+app$ $EDITOR ./appconfig/deployment.yaml
+app$ git add ./appconfig/deployment.yaml
+app$ git commit -m "Adapt deployment to local config"
+
+# update from upstream
+app$ spresm update ./appconfig --version v1.0.1
+Updating version in ./appconfig/Spresmfile
+Merging ./appconfig/deployment.yaml
+app$ git add -u -- ./appconfig
+app$ git commit -m "Update to app:v1.0.1"
 ```
 
-Usually, of course, these two things would happen in different places
--- for example, a continuous integration pipeline would build the
-configuration image when you pushed to a pull request, then it would
-be tested (e.g., its output linted) and the results reported
-back. Once merged, the configuration would be built from master, and
-run through another battery of tests, before being pushed to the image
-repository and released to the running system.
+Installing the package runs the image to generate a base config. From
+there you can alter the inputs and generate the configuration again,
+edit the YAML files, and update the package from upstream.
+
+Usually, of course, building something and using it would happen in
+different places. For example, a continuous integration pipeline would
+build the configuration image when you pushed to a pull request, then
+it would be tested (e.g., its output linted) and the results reported
+back. Once merged, the configuration would be built from the main
+branch, and run through another battery of tests, before being pushed
+to the image repository. An automated system, or a human, can then
+update configurations using the package with the new image.
 
 ## Motivation
 
@@ -66,82 +94,130 @@ on, so why not configurations?
 Most tooling has an active component to it -- the tool itself. For
 example, you need the `helm` executable to realise a Helm chart.
 
-Using container images means the executable can come with its
-input. But won't this be wasteful? No, because container images have
+Using container images means the executable can be shipped with its
+input. Won't this be wasteful? No, because container images have
 shared structure, so you only need to ship layers that have new
 content.
 
 **Why not just use Helm?**
 
-Helm has some quirks and limitations, but certainly plenty of people
-think it's good enough. You can keep using Helm charts with Spresm --
-the point is that the rest of the system doesn't depend on you using
-Helm charts, or any other specific tooling.
+Helm has some quirks and limitations, though certainly plenty of
+people think it's good enough. You can keep using Helm charts with
+Spresm -- the point is that the rest of the system doesn't depend on
+you using Helm charts, or any other specific tooling.
 
-**Shouldn't my configuration be in git?**
+However, Spresm also comes with things you don't get with Helm; in
+particular, you can modify the expanded chart, and merge your changes
+with changes made to the upstream chart when you upgrade it.
 
-Yes, your configuration should be in git. Like all your
-code. Packaging it into images is a means of delivery, not a change of
-methodology.
+**Shouldn't my configuration be in YAMLs in git?**
+
+Yes, your configuration should be in git. But no, your configuration
+doesn't need to be in YAMLs -- that's just a lowest common denominator
+for both writing by humans, and reading by tooling and configurable
+systems.
+
+All the same techniques for programming, like abstraction and
+refactoring, apply for writing configuration as much as for other
+programs. Spresm bridges between the environment in which you can use
+those techniques, and the environment that needs YAMLs.
 
 ## Design
 
-### Mechanism
+### Plumbing
 
-The basic mechanism for evaluation is this:
+There are two fundamental operations in Spresm:
 
- - `spresm` assembles the input parameters to the configuration, from
-   the files or individual paramaters given to it;
+ - evaluation (expanding a configuration from its container image or
+   chart); and,
+ - merging newly expanded configuration with changes made previously.
 
- - the entrypoint of the container in question is run, mounting an
-   output directory, as well as the parameters at a conventional
-   location and supplying the output directory as an environment
-   variable;
+The rest is dressing around those, to make it usable.
 
- - when complete, the files in the output directory are used as the
-   result.
+#### Evaluation
 
-### Using Spresm locally
+The mechanism for evaluation is this:
+
+ - A container using the given image is started;
+ - `spresm` assembles the input parameters to the package and writes
+   it to the container's stdin;
+ - the output is printed to stdout as a list of resources, where it is
+   parsed by the runtime and written to files.
+
+#### Merging
+
+The merge operation is so that changes made to the YAML files can be
+reconciled with a change in the output of the (newer) container
+image. This is a three-way merge between:
+
+ a. the downstream changes, that is anything changed in the local
+ configuration;
+ b. the upstream changes, that is the change in the output of the
+ container image;
+ c. the common ancestor, that is the configuration as last evaluated.
+
+### User interface
+
+The porcelain commands in Spresm are largely about importing and
+updating packages, but include some conveniences for creating
+packages, trouble-shooting, and integration with other systems.
+
+#### Main commands
+
+**Import a package into the local configuration**
+
+    spresm import image org/app:v1.0.0 ./app/
+    spresm import chart org/app:v1.0.0 ./app/
+
+This fetches anything it needs (i.e., the image or the chart) and
+evaluates it, writing the output files to `app/`.
+
+    spresm import git https://github.com/org/app.git/config app/
+
+This fetches the git repository (everything up to `app.git`) and
+copies the files from `./config` in the repository into `app/`.
+
+All of these record the provenance of the config in app/, so that
+`spresm update` can fetch another version of the package, and
+re-evaluate it.
+
+**Update a package to another version**
+
+    spresm update --version v1.0.1 ./app/
+
+This fetches another version of the configuration package, and merges
+it with any changes made to the last version. If the upstream is an
+image or chart, it is re-run to get the files to merge.
+
+**Update the expanded package based on input values**
+
+    spresm update --input ./app/
+
+This runs and merges the package again, with (possibly) new input
+values but without changing the version.
+
+#### Building packages
+
+For convenience in building packages, Spresm has a set of archetypal
+images that can be specialised with program code. These are accessible
+with the command `spresm build`:
+
+```bash
+$ spresm build --archetype=cdk8s-typescript --image app:v1.0.3 ./config/app
+```
+
+#### Evaluating a package
+
+The main mode of use is to import and update packages, which entails
+their evaluation; however, it's possible to use the plumbing to
+explicitly evaluate packages.
 
 You can run a container locally to generate the configuration, either
 in a build script, or just to eyeball it:
 
 ```bash
-$ spresm generate --stdout app:v1.0.3 --values local.yaml
+$ spresm evaluate --stdout app:v1.0.3 --values local.yaml
 ```
-
-### Using Spresm in continuous integration
-
-Spresm might feature in a few places in a continuous integration
-pipeline:
-
- - it could be invoked on a set of parameters particular to the
-   environment, then checked with linting and so on, to verify that
-   the configuration will work in that environment (e.g., a cluster)
-
- - it could be used as the last step of a delivery pipeline, to
-   generate the configuration that will be applied to a running system
-
- - the definition of the pipeline might itself be packaged in an
-   image, and applied with `spresm`.
-
-### Using Spresm to drive a GitOps pipeline
-
-You often want to see the effect that a configuration change will make
-to the running system, and this is usually easier to evaluate as data;
-e.g., as YAMLs.
-
-For this purpose, you can keep a git repository of YAML files, and use
-`spresm` to splat new configuration into it. That not only gives you
-diffs of the data, but means you can use that git repository as the
-system of record for GitOps.
-
-### Using Spresm as an operator
-
-Spresm could be tooled as an operator to run in Kubernetes. This would
-watch a particular kind of custom resource, which specified the image
-version as well as values from various sources, and apply the
-configuration generated whenever anything changed.
 
 ---
 
@@ -184,6 +260,8 @@ design is superior._
    - Skaffold
    - Cloud-native Buildpacks
    - Helm
+   - kpt
+   - cdk8s
 
 _Keep track here of questions that come up while this is a draft.
 Ideally, there will be nothing unresolved by the time the RFC is
