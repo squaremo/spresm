@@ -36,6 +36,7 @@ func newEvalCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "eval",
 		Short: `(re)evaluate a previously imported package`,
+		RunE:  evalCmd,
 	}
 }
 
