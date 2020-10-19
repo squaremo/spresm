@@ -3,6 +3,7 @@ module github.com/squaremo/spresm
 go 1.14
 
 require (
+	github.com/go-git/go-git/v5 v5.2.0
 	github.com/spf13/cobra v1.0.0
 	github.com/stretchr/testify v1.4.0
 	gopkg.in/yaml.v3 v3.0.0-20200121175148-a6ecf24a6d71

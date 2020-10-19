@@ -27,15 +27,16 @@ func newImportCommand() *cobra.Command {
 
 func newUpdateCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "update",
-		Short: `update a previously imported package from its upstream`,
+		Use:   "update <dir>",
+		Short: `update the package in <dir> according to its spec file`,
+		RunE:  updateCmd,
 	}
 }
 
 func newEvalCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "eval",
-		Short: `(re)evaluate a previously imported package`,
+		Use:   "eval <dir>",
+		Short: `evaluate the spec file in <dir> and show the output`,
 		RunE:  evalCmd,
 	}
 }
