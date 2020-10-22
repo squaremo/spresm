@@ -17,6 +17,8 @@ func Eval(s spec.Spec) ([]*yaml.RNode, error) {
 	switch s.Kind {
 	case spec.ImageKind:
 		return evalImage(s)
+	case spec.ChartKind:
+		return evalHelmChart(s)
 	default:
 		return nil, ErrNotImplemented
 	}
