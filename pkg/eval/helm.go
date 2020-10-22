@@ -3,6 +3,7 @@ package eval
 import (
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 
 	"helm.sh/helm/v3/pkg/chart/loader"
@@ -87,15 +88,22 @@ func evalHelmChart(s spec.Spec) ([]*yaml.RNode, error) {
 	}
 
 	var result []*yaml.RNode
+	basepath := filepath.Join(chartName, "templates")
 	for filename, src := range rendered {
 		// probably fine hack: ignore anything that's not YAMLish
 		if !(strings.HasSuffix(filename, ".yaml") || strings.HasSuffix(filename, ".yml")) {
 			continue
 		}
+
+		// if this fails, just use the path as-is
+		path, err := filepath.Rel(basepath, filename)
+		if err != nil {
+			path = filename
+		}
 		br := kio.ByteReader{
 			Reader: strings.NewReader(src),
 			SetAnnotations: map[string]string{
-				kioutil.PathAnnotation: filename,
+				kioutil.PathAnnotation: path,
 			},
 		}
 		resources, err := br.Read()
