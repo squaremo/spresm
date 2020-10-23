@@ -14,12 +14,6 @@ import (
 	"github.com/squaremo/spresm/pkg/spec"
 )
 
-// [DEBUG]
-import (
-	yamlv3 "gopkg.in/yaml.v3"
-	"os"
-)
-
 // evalHelmChart evaluates a spec with the kind "HelmChart".
 func evalHelmChart(s spec.Spec) ([]*yaml.RNode, error) {
 	// The format expected here looks like a regular URL; everything
@@ -37,9 +31,6 @@ func evalHelmChart(s spec.Spec) ([]*yaml.RNode, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not create values for chart templates: %w", err)
 	}
-
-	// [DEBUG]
-	yamlv3.NewEncoder(os.Stderr).Encode(values)
 
 	rendered, err := engine.Render(chart, values)
 	if err != nil {
