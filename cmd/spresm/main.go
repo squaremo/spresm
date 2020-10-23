@@ -18,13 +18,6 @@ func main() {
 	root.Execute()
 }
 
-func newImportCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "import",
-		Short: `import a package from a git repository, chart or image`,
-	}
-}
-
 func newUpdateCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "update <dir>",
