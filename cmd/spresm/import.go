@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -95,9 +96,29 @@ func (flags *importHelmChartFlags) importHelmChart(cmd *cobra.Command, args []st
 	}
 	fmt.Fprintf(os.Stderr, "chart found %q\n", chart.Name())
 
-	// TODO present the values for editing
+	// present the chart default values for editing
+	tmpvalues, err := ioutil.TempFile("", "spresm-import")
+	if err != nil {
+		return fmt.Errorf("could not create temp file for editing values: %w", err)
+	}
+	defer os.Remove(tmpvalues.Name())
 
-	// TODO put the values into the spec
+	if err := yaml.NewEncoder(tmpvalues).Encode(chart.Values); err != nil {
+		return fmt.Errorf("failed to write values to file for editing: %w", err)
+	}
+	// FIXME deal with no env entry for EDITOR
+	c := exec.Command("sh", "-c", "$EDITOR "+tmpvalues.Name())
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	c.Stdin = os.Stdin
+	fmt.Fprintf(os.Stderr, "opening values file %s for editing ...\n", tmpvalues.Name())
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("error editing values: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "... done.\n")
+
+	// TODO read the values and put into the spec (and respect them
+	// when evaluating it)
 
 	specPath := filepath.Join(dir, Spresmfile)
 	buf := &bytes.Buffer{}
