@@ -10,6 +10,9 @@ type Spec struct {
 	Source string `json:"source"`
 	// the version of the source that's to be evaluated
 	Version string `json:"version"`
+
+	// kind-specific bits
+	Helm *HelmArgs `json:"helm,omitempty"`
 }
 
 type Kind string
@@ -23,4 +26,11 @@ const (
 func (s *Spec) Init(k Kind) {
 	s.APIVersion = APIVersion
 	s.Kind = k
+}
+
+type HelmArgs struct {
+	Values  map[string]interface{} `json:"values"`
+	Release struct {
+		Name string `json:"name"`
+	} `json:"release"`
 }

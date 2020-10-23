@@ -106,6 +106,8 @@ func (flags *importHelmChartFlags) importHelmChart(cmd *cobra.Command, args []st
 	if err := yaml.NewEncoder(tmpvalues).Encode(chart.Values); err != nil {
 		return fmt.Errorf("failed to write values to file for editing: %w", err)
 	}
+	tmpvalues.Close()
+
 	// FIXME deal with no env entry for EDITOR
 	c := exec.Command("sh", "-c", "$EDITOR "+tmpvalues.Name())
 	c.Stdout = os.Stdout
@@ -116,8 +118,18 @@ func (flags *importHelmChartFlags) importHelmChart(cmd *cobra.Command, args []st
 		return fmt.Errorf("error editing values: %w", err)
 	}
 	fmt.Fprintf(os.Stderr, "... done.\n")
+	valuesBytes, err := ioutil.ReadFile(tmpvalues.Name())
+	if err != nil {
+		return fmt.Errorf("unable to re-read values file %s after editing: %w", tmpvalues.Name(), err)
+	}
 
-	// TODO read the values and put into the spec (and respect them
+	s.Helm = &spec.HelmArgs{}
+	if err := yaml.NewDecoder(bytes.NewBuffer(valuesBytes)).Decode(&s.Helm.Values); err != nil {
+		return fmt.Errorf("unable to re-read values from file %s after editing: %w", tmpvalues.Name(), err)
+	}
+	s.Helm.Release.Name = filepath.Base(dir)
+
+	// read the values and put into the spec (and respect them
 	// when evaluating it)
 
 	specPath := filepath.Join(dir, Spresmfile)
