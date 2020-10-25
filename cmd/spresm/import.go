@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -23,41 +24,12 @@ func newImportCommand() *cobra.Command {
 	}
 	cmd.AddCommand(
 		newImportHelmChartCommand(),
+		newImportImageCommand(),
 	)
 	return cmd
 }
 
-func newImportHelmChartCommand() *cobra.Command {
-	flags := &importHelmChartFlags{}
-	cmd := &cobra.Command{
-		Use:   "helm <dir> --chart <chart URL> --version <version>",
-		Short: `import a Helm chart as a package`,
-		RunE:  flags.importHelmChart,
-	}
-	flags.init(cmd)
-	return cmd
-}
-
-type importHelmChartFlags struct {
-	chartURL, version string
-}
-
-func (flags *importHelmChartFlags) init(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&flags.chartURL, "chart", "", "URL for chart, including the repository; e.g., https://charts.fluxcd.io/flux")
-	cmd.Flags().StringVar(&flags.version, "version", "", "version of chart to use")
-}
-
-func (flags *importHelmChartFlags) importHelmChart(cmd *cobra.Command, args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("expected exactly one argument, the directory in which to put the package files")
-	}
-	dir := args[0]
-	if flags.chartURL == "" || flags.version == "" {
-		return fmt.Errorf("need both chart URL (--chart) and version (--version) flags")
-	}
-
-	// TODO make sure the target directory doesn't exist, or at least
-	// is empty (?)
+func ensurePackageDirectory(dir string) error {
 	dirstat, err := os.Stat(dir)
 	switch {
 	case os.IsNotExist(err):
@@ -82,59 +54,13 @@ func (flags *importHelmChartFlags) importHelmChart(cmd *cobra.Command, args []st
 			return fmt.Errorf("directory %s exists but is not empty; cannot import into a directory which already has files", dir)
 		}
 	}
+	return nil
+}
 
-	// create spec file
-	var s spec.Spec
-	s.Init(spec.ChartKind)
-	s.Source = flags.chartURL
-	s.Version = flags.version
-
-	// get the chart
-	chart, err := eval.ProcureChart(flags.chartURL, flags.version)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "chart found %q\n", chart.Name())
-
-	// present the chart default values for editing
-	tmpvalues, err := ioutil.TempFile("", "spresm-import")
-	if err != nil {
-		return fmt.Errorf("could not create temp file for editing values: %w", err)
-	}
-	defer os.Remove(tmpvalues.Name())
-
-	if err := yaml.NewEncoder(tmpvalues).Encode(chart.Values); err != nil {
-		return fmt.Errorf("failed to write values to file for editing: %w", err)
-	}
-	tmpvalues.Close()
-
-	// FIXME deal with no env entry for EDITOR
-	c := exec.Command("sh", "-c", "$EDITOR "+tmpvalues.Name())
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	c.Stdin = os.Stdin
-	fmt.Fprintf(os.Stderr, "opening values file %s for editing ...\n", tmpvalues.Name())
-	if err := c.Run(); err != nil {
-		return fmt.Errorf("error editing values: %w", err)
-	}
-	fmt.Fprintf(os.Stderr, "... done.\n")
-	valuesBytes, err := ioutil.ReadFile(tmpvalues.Name())
-	if err != nil {
-		return fmt.Errorf("unable to re-read values file %s after editing: %w", tmpvalues.Name(), err)
-	}
-
-	s.Helm = &spec.HelmArgs{}
-	if err := yaml.NewDecoder(bytes.NewBuffer(valuesBytes)).Decode(&s.Helm.Values); err != nil {
-		return fmt.Errorf("unable to re-read values from file %s after editing: %w", tmpvalues.Name(), err)
-	}
-	s.Helm.Release.Name = filepath.Base(dir)
-
-	// read the values and put into the spec (and respect them
-	// when evaluating it)
-
+func writePackage(dir string, s spec.Spec) error {
 	specPath := filepath.Join(dir, Spresmfile)
 	buf := &bytes.Buffer{}
-	err = yaml.NewEncoder(buf).Encode(s)
+	err := yaml.NewEncoder(buf).Encode(s)
 	if err == nil {
 		err = ioutil.WriteFile(specPath, buf.Bytes(), os.FileMode(0600))
 	}
@@ -149,8 +75,38 @@ func (flags *importHelmChartFlags) importHelmChart(cmd *cobra.Command, args []st
 	resources, err := eval.Eval(s)
 	writer := kio.LocalPackageWriter{PackagePath: dir}
 	if err := writer.Write(resources); err != nil {
-		return fmt.Errorf("problem writing to the directory %s: %w", dir, err)
+		return fmt.Errorf("problem writing to the directory %s/: %w", dir, err)
 	}
-	fmt.Fprintf(os.Stderr, "spec evaluated to %s\n", dir)
+	fmt.Fprintf(os.Stderr, "spec evaluated to %s/\n", dir)
 	return nil
+}
+
+func editConfig(initialConfig interface{}) (io.Reader, error) {
+	// present the chart default values for editing
+	tmpvalues, err := ioutil.TempFile("", "spresm-import")
+	if err != nil {
+		return nil, fmt.Errorf("could not create temp file for editing config: %w", err)
+	}
+	defer os.Remove(tmpvalues.Name())
+
+	if err := yaml.NewEncoder(tmpvalues).Encode(initialConfig); err != nil {
+		return nil, fmt.Errorf("failed to write config to file for editing: %w", err)
+	}
+	tmpvalues.Close()
+
+	// FIXME deal with no env entry for EDITOR
+	c := exec.Command("sh", "-c", "$EDITOR "+tmpvalues.Name())
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	c.Stdin = os.Stdin
+	fmt.Fprintf(os.Stderr, "opening config file %s for editing ...\n", tmpvalues.Name())
+	if err := c.Run(); err != nil {
+		return nil, fmt.Errorf("error editing config: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "... done.\n")
+	valuesBytes, err := ioutil.ReadFile(tmpvalues.Name())
+	if err != nil {
+		return nil, fmt.Errorf("unable to re-read config file %s after editing: %w", tmpvalues.Name(), err)
+	}
+	return bytes.NewBuffer(valuesBytes), nil
 }
