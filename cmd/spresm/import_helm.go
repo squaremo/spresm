@@ -17,7 +17,7 @@ func newImportHelmChartCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "helm <dir> --chart <chart URL> --version <version>",
 		Short: `import a Helm chart as a package`,
-		RunE:  flags.importHelmChart,
+		RunE:  flags.run,
 	}
 	flags.init(cmd)
 	return cmd
@@ -32,7 +32,7 @@ func (flags *importHelmChartFlags) init(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&flags.version, "version", "", "version of chart to use")
 }
 
-func (flags *importHelmChartFlags) importHelmChart(cmd *cobra.Command, args []string) error {
+func (flags *importHelmChartFlags) run(cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("expected exactly one argument, the directory in which to put the package files")
 	}
@@ -58,16 +58,17 @@ func (flags *importHelmChartFlags) importHelmChart(cmd *cobra.Command, args []st
 	}
 	fmt.Fprintf(os.Stderr, "chart found %q\n", chart.Name())
 
-	valuesReader, err := editConfig(chart.Values)
+	s.Helm = &spec.HelmArgs{Values: chart.Values}
+	s.Helm.Release.Name = filepath.Base(dir)
+
+	valuesReader, err := editConfig(s.Helm)
 	if err != nil {
 		return err
 	}
 
-	s.Helm = &spec.HelmArgs{}
-	if err := yaml.NewDecoder(valuesReader).Decode(&s.Helm.Values); err != nil {
-		return fmt.Errorf("unable to re-read values after editing: %w", err)
+	if err := yaml.NewDecoder(valuesReader).Decode(s.Helm); err != nil {
+		return fmt.Errorf("unable to re-read config after editing: %w", err)
 	}
-	s.Helm.Release.Name = filepath.Base(dir)
 
 	return writePackage(dir, s)
 }

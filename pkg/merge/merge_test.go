@@ -281,3 +281,44 @@ spec:
 `
 	testMerge(t, local, base, updated, merged)
 }
+
+// A change in a list item in newly generated resources is kept
+func TestListItem(t *testing.T) {
+	base := `
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: hello
+        image: helloworld:1.0
+        args:
+        - --greeting=hello
+`
+	local := `
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: hello
+        image: helloworld:1.2
+        args:
+        - --greeting=hello
+`
+	updated := `
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: hello
+        image: helloworld:1.2
+        args:
+        - --greeting=tena koe
+`
+	testMerge(t, updated, base, local, updated)
+}

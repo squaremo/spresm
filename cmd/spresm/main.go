@@ -18,14 +18,6 @@ func main() {
 	root.Execute()
 }
 
-func newUpdateCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "update <dir>",
-		Short: `update the package in <dir> according to its spec file`,
-		RunE:  updateCmd,
-	}
-}
-
 func newEvalCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "eval <dir>",

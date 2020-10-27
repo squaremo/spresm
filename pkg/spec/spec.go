@@ -28,6 +28,15 @@ func (s *Spec) Init(k Kind) {
 	s.Kind = k
 }
 
+func (s *Spec) Config() interface{} {
+	switch s.Kind {
+	case ChartKind:
+		return s.Helm
+	default: // TODO: other kinds
+		return nil
+	}
+}
+
 type HelmArgs struct {
 	Values  map[string]interface{} `json:"values"`
 	Release struct {

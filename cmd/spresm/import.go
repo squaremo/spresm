@@ -57,7 +57,7 @@ func ensurePackageDirectory(dir string) error {
 	return nil
 }
 
-func writePackage(dir string, s spec.Spec) error {
+func writeSpec(dir string, s spec.Spec) (string, error) {
 	specPath := filepath.Join(dir, Spresmfile)
 	buf := &bytes.Buffer{}
 	err := yaml.NewEncoder(buf).Encode(s)
@@ -65,13 +65,20 @@ func writePackage(dir string, s spec.Spec) error {
 		err = ioutil.WriteFile(specPath, buf.Bytes(), os.FileMode(0600))
 	}
 	if err != nil {
-		return fmt.Errorf("failed to encode and write spec to %s: %w", specPath, err)
+		return "", fmt.Errorf("failed to encode and write spec to %s: %w", specPath, err)
+	}
+	return specPath, nil
+}
+
+func writePackage(dir string, s spec.Spec) error {
+	specPath, err := writeSpec(dir, s)
+	if err != nil {
+		return err
 	}
 	fmt.Fprintf(os.Stderr, "spec file written to %s\n", specPath)
 
-	// TODO eval (update, really) the spec, to render the chart into
-	// the directory. This bit will be in common with other import
-	// commands, so stick it in pkg somewhere.
+	// eval the spec, to render the chart into the directory. TODO
+	// stick it in pkg somewhere.
 	resources, err := eval.Eval(s)
 	writer := kio.LocalPackageWriter{PackagePath: dir}
 	if err := writer.Write(resources); err != nil {
@@ -83,7 +90,7 @@ func writePackage(dir string, s spec.Spec) error {
 
 func editConfig(initialConfig interface{}) (io.Reader, error) {
 	// present the chart default values for editing
-	tmpvalues, err := ioutil.TempFile("", "spresm-import")
+	tmpvalues, err := ioutil.TempFile("", "spresm-edit")
 	if err != nil {
 		return nil, fmt.Errorf("could not create temp file for editing config: %w", err)
 	}
