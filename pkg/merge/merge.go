@@ -7,15 +7,19 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/yaml/merge3"
 )
 
-// Merge takes three sets of resources -- ours (aka dest), base (aka
-// original), and theirs (aka updated) -- and does a three-way
+// Merge takes three sets of resources -- mine (aka dest), orig (aka
+// base, aka older), and yours (aka updated) -- and does a three-way
 // merge. It returns an error if the merge has conflicts.
+//
+// See
+// https://www.gnu.org/software/diffutils/manual/html_node/diff3-Merging.html
+// for more information about three-way merge.
 //
 // TODO don't fail utterly when there's conflicts; report the
 // conflicts instead, or add conflict markers somehow.
-func Merge(oursNodes, baseNodes, theirsNodes []*yaml.RNode) ([]*yaml.RNode, error) {
-	base := nodesToMap(baseNodes)
-	theirs := nodesToMap(theirsNodes)
+func Merge(mineNodes, origNodes, yoursNodes []*yaml.RNode) ([]*yaml.RNode, error) {
+	orig := nodesToMap(origNodes)
+	yours := nodesToMap(yoursNodes)
 
 	// Resource set merge algorithm:
 	//
@@ -23,71 +27,71 @@ func Merge(oursNodes, baseNodes, theirsNodes []*yaml.RNode) ([]*yaml.RNode, erro
 	//
 	// - if present in all, then do three-way merge
 
-	// - if only in theirs, it's not generated; keep it
-	// - if only in ours, it's a new generated file; keep it
-	// - if only in base, it's removed; lose it
+	// - if only in `mine`, it's introduced locally; keep it
+	// - if only in `yours`, it's a new file upstream; keep it
+	// - if only in `orig`, it's removed; lose it
 	//
-	// - if in base and theirs but not ours, it's been removed from
-	// generation; if base and theirs differ, raise a conflict (akin
+	// - if in `orig` and `yours` but not in `mine`, it's been removed
+	// locally; if `orig` and `yours` differ, raise a conflict (akin
 	// to "file has changes upstream but has been removed locally"),
 	// otherwise lose it.
 
-	// - if in theirs and ours but not base, it's added locally _and_
-	// added to generated files. Conflict.
+	// - if in `yours` and `mine` but not `orig`, it's added locally
+	// _and_ added upstream. Conflict.
 
-	// - if in base and ours but not theirs, it's removed upstream; if
-	// ours differs from base, raise a conflict ("removed upstream but
-	// changed locally"), otherwise lose it.
+	// - if in `orig` and `mine` but not in `yours`, it's removed
+	// upstream; if `mine` differs from `orig`, raise a conflict
+	// ("removed upstream but changed locally"), otherwise lose it.
 
 	result := []*yaml.RNode{}
 
-	for _, oursNode := range oursNodes {
-		meta, err := oursNode.GetMeta()
+	for _, mineNode := range mineNodes {
+		meta, err := mineNode.GetMeta()
 		if err != nil {
 			continue // FIXME think about this; ignores anything without meta
 		}
-		oursId := meta.GetIdentifier()
-		baseNode, baseOk := base[oursId]
-		theirsNode, theirsOk := theirs[oursId]
+		mineId := meta.GetIdentifier()
+		origNode, origOk := orig[mineId]
+		yoursNode, yoursOk := yours[mineId]
 		switch {
-		case baseOk && theirsOk:
+		case origOk && yoursOk:
 			// present in all three
 
 			// remove from consideration later
-			delete(base, oursId)
-			delete(theirs, oursId)
-			merged, err := merge3.Merge(oursNode, baseNode, theirsNode)
+			delete(orig, mineId)
+			delete(yours, mineId)
+			merged, err := merge3.Merge(mineNode, origNode, yoursNode)
 			if err != nil {
 				return nil, err
 			}
 			result = append(result, merged)
 			break
-		case baseOk: // and not theirsOk
+		case origOk: // and not theirsOk
 			// removed in local directory
 
 			// remove from consideration later
-			delete(base, oursId)
+			delete(orig, mineId)
 			// TODO actually check if they differ; this needs either a
 			// walk or a serialisation
-			return nil, fmt.Errorf("resource %v is changed from original, but removed in local files", oursId)
-		case theirsOk: // and not baseOk
+			return nil, fmt.Errorf("resource %v is changed from original, but removed in local files", mineId)
+		case yoursOk: // and not baseOk
 			// added locally and new in generated files -- conflict.
-			return nil, fmt.Errorf("resource %v from generated resources conflicts with resource added locally", oursId)
+			return nil, fmt.Errorf("resource %v from generated resources conflicts with resource added locally", mineId)
 		default: // only in ours
-			result = append(result, oursNode)
+			result = append(result, mineNode)
 		}
 	}
 
 	// that's all the resources from ours. Now to compare any that are
 	// in either or both of base and theirs.
-	for baseId, _ := range base {
-		_, theirsOk := theirs[baseId]
+	for origId, _ := range orig {
+		_, yoursOk := yours[origId]
 		switch {
-		case theirsOk:
+		case yoursOk:
 			// in base and theirs, not in ours.
-			delete(theirs, baseId) // remove from consideration later
+			delete(yours, origId) // remove from consideration later
 			// TODO actually check if it's different.
-			return nil, fmt.Errorf("resource %v changed from original, but removed in generated files", baseId)
+			return nil, fmt.Errorf("resource %v changed from original, but removed in generated files", origId)
 		default:
 			// only in base; lose it.
 			break
@@ -95,8 +99,8 @@ func Merge(oursNodes, baseNodes, theirsNodes []*yaml.RNode) ([]*yaml.RNode, erro
 	}
 
 	// lastly, anything left in theirs is not generated, so keep it.
-	for _, theirsNode := range theirs {
-		result = append(result, theirsNode)
+	for _, yoursNode := range yours {
+		result = append(result, yoursNode)
 	}
 
 	return result, nil
