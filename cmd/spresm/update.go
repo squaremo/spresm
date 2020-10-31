@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/go-git/go-git/v5"
@@ -15,7 +16,26 @@ import (
 	"github.com/squaremo/spresm/pkg/spec"
 )
 
-func updateCmd(cmd *cobra.Command, args []string) error {
+func newUpdateCommand() *cobra.Command {
+	flags := &updateFlags{}
+	cmd := &cobra.Command{
+		Use:   "update <dir>",
+		Short: `update the package in <dir> according to its spec file`,
+		RunE:  flags.run,
+	}
+	flags.init(cmd)
+	return cmd
+}
+
+type updateFlags struct {
+	edit bool
+}
+
+func (flags *updateFlags) init(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&flags.edit, "edit", false, "present the package config for editing before updating")
+}
+
+func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
 		return errors.New("update expected exactly one argument")
 	}
@@ -30,6 +50,24 @@ func updateCmd(cmd *cobra.Command, args []string) error {
 	updatedSpec, err := getSpec(dir)
 	if err != nil {
 		return err
+	}
+
+	// if --edit, extract the package config and present it for
+	// editing.
+	if flags.edit {
+		config := updatedSpec.Config()
+		configReader, err := editConfig(config)
+		if err != nil {
+			return err
+		}
+		if err := yaml.NewDecoder(configReader).Decode(config); err != nil {
+			return fmt.Errorf("unable to re-read config after editing: %w", err)
+		}
+		if specPath, err := writeSpec(dir, updatedSpec); err != nil {
+			return err
+		} else {
+			fmt.Fprintf(os.Stderr, "Spec file written back to %s\n", specPath)
+		}
 	}
 
 	// get the spec as it is in HEAD

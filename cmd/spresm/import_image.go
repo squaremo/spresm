@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/squaremo/spresm/pkg/spec"
 )
@@ -46,9 +47,23 @@ func (flags *importImageFlags) importImage(cmd *cobra.Command, args []string) er
 	s.Init(spec.ImageKind)
 	s.Source = flags.image
 	s.Version = flags.tag
+	s.Image = &spec.ImageArgs{}
+	// In the absence of indications otherwise, use a ConfigMap. This
+	// is the convention for kyaml functions.
+	s.Image.FunctionConfig = map[string]interface{}{
+		"apiVersion": "v1",
+		"kind":       "ConfigMap",
+		"data":       map[string]string{},
+	}
 
-	// TODO figure out some scheme for giving the user a default
-	// function config to edit
+	valuesReader, err := editConfig(s.Image)
+	if err != nil {
+		return err
+	}
+
+	if err := yaml.NewDecoder(valuesReader).Decode(s.Image); err != nil {
+		return fmt.Errorf("unable to re-read config after editing: %w", err)
+	}
 
 	return writePackage(dir, s)
 }
