@@ -2,17 +2,20 @@ package spec
 
 const APIVersion = "spresm.squaremo.dev/v1alpha1"
 
+// Spec is a specification for generating configuration.
 type Spec struct {
-	APIVersion string `json:"apiVersion"`
-	Kind       Kind   `json:"kind"`
+	APIVersion string `json:"apiVersion" yaml:"apiVersion"`
+	Kind       Kind   `json:"kind" yaml:"kind"`
 
 	// the upstream source; might be an image repository, or a git URL
-	Source string `json:"source"`
+	Source string `json:"source",yaml:"source"`
 	// the version of the source that's to be evaluated
-	Version string `json:"version"`
+	Version string `json:"version" yaml:"version"`
 
 	// kind-specific bits
-	Helm *HelmArgs `json:"helm,omitempty"`
+	// +optional
+	Helm  *HelmArgs  `json:"helm,omitempty" yaml:"helm,omitempty"`
+	Image *ImageArgs `json:"image,omitempty" yaml:"image,omitempty"`
 }
 
 type Kind string
@@ -32,6 +35,8 @@ func (s *Spec) Config() interface{} {
 	switch s.Kind {
 	case ChartKind:
 		return s.Helm
+	case ImageKind:
+		return s.Image
 	default: // TODO: other kinds
 		return nil
 	}
@@ -42,4 +47,8 @@ type HelmArgs struct {
 	Release struct {
 		Name string `json:"name"`
 	} `json:"release"`
+}
+
+type ImageArgs struct {
+	FunctionConfig interface{} `json:"functionConfig"`
 }
