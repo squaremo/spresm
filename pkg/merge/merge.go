@@ -45,6 +45,13 @@ func Merge(mineNodes, origNodes, yoursNodes []*yaml.RNode) ([]*yaml.RNode, error
 
 	result := []*yaml.RNode{}
 
+	// The following bears a resemblance to
+	// https://github.com/kubernetes-sigs/kustomize/blob/master/kyaml/kio/filters/merge3.go#L79,
+	// but:
+	//
+	// - it's operating on sets of nodes, rather the loading from files
+	// - it treats change/remove conflicts as conflicts
+
 	for _, mineNode := range mineNodes {
 		meta, err := mineNode.GetMeta()
 		if err != nil {
