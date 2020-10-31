@@ -50,5 +50,5 @@ type HelmArgs struct {
 }
 
 type ImageArgs struct {
-	FunctionConfig interface{} `json:"functionConfig"`
+	FunctionConfig interface{} `json:"functionConfig" yaml:"functionConfig"`
 }
