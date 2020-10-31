@@ -33,7 +33,8 @@ func evalHelmChart(s spec.Spec) ([]*yaml.RNode, error) {
 	// Finally we have an actual chart.
 	// TODO use values, releaseOptions from the spec.
 	values, err := chartutil.ToRenderValues(chart, chartutil.Values(helmArgs.Values), chartutil.ReleaseOptions{
-		Name: helmArgs.Release.Name,
+		Name:      helmArgs.Release.Name,
+		Namespace: helmArgs.Release.Namespace,
 	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not create values for chart templates: %w", err)

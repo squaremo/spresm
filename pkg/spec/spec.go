@@ -45,7 +45,8 @@ func (s *Spec) Config() interface{} {
 type HelmArgs struct {
 	Values  map[string]interface{} `json:"values"`
 	Release struct {
-		Name string `json:"name"`
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
 	} `json:"release"`
 }
 

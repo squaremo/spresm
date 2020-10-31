@@ -24,12 +24,13 @@ func newImportHelmChartCommand() *cobra.Command {
 }
 
 type importHelmChartFlags struct {
-	chartURL, version string
+	chartURL, version, namespace string
 }
 
 func (flags *importHelmChartFlags) init(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&flags.chartURL, "chart", "", "URL for chart, including the repository; e.g., https://charts.fluxcd.io/flux")
 	cmd.Flags().StringVar(&flags.version, "version", "", "version of chart to use")
+	cmd.Flags().StringVar(&flags.namespace, "namespace", "default", "namespace to deploy chart to")
 }
 
 func (flags *importHelmChartFlags) run(cmd *cobra.Command, args []string) error {
@@ -60,6 +61,7 @@ func (flags *importHelmChartFlags) run(cmd *cobra.Command, args []string) error 
 
 	s.Helm = &spec.HelmArgs{Values: chart.Values}
 	s.Helm.Release.Name = filepath.Base(dir)
+	s.Helm.Release.Namespace = flags.namespace
 
 	valuesReader, err := editConfig(s.Helm)
 	if err != nil {
