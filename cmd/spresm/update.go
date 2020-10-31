@@ -20,8 +20,14 @@ func updateCmd(cmd *cobra.Command, args []string) error {
 		return errors.New("update expected exactly one argument")
 	}
 	dir := args[0]
+
+	// This will do a three way merge between:
+	//  - the resources in the working directory (`dest`)
+	//  - the resources as previously defined (`orig`)
+	//  - the resources as defined by the updated spec (`updated`)
+
 	// get the spec as it is in the file system
-	oursSpec, err := getSpec(dir)
+	updatedSpec, err := getSpec(dir)
 	if err != nil {
 		return err
 	}
@@ -38,7 +44,7 @@ func updateCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("could not get spec from git repo: %w", err)
 	}
 
-	ours, err := eval.Eval(oursSpec)
+	updated, err := eval.Eval(updatedSpec)
 	if err != nil {
 		return fmt.Errorf("could not eval local spec: %w", err)
 	}
@@ -47,19 +53,19 @@ func updateCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("could not eval local spec: %w", err)
 	}
 
-	theirsRW := kio.LocalPackageReadWriter{
+	destRW := kio.LocalPackageReadWriter{
 		PackagePath: dir,
 	}
-	theirs, err := theirsRW.Read()
+	dest, err := destRW.Read()
 	if err != nil {
 		return fmt.Errorf("could not parse local files: %w", err)
 	}
 
-	merged, err := merge.Merge(ours, orig, theirs)
+	merged, err := merge.Merge(dest, orig, updated)
 	if err != nil {
 		return err
 	}
-	return theirsRW.Write(merged)
+	return destRW.Write(merged)
 }
 
 func getSpecFromGitHead(repo *git.Repository, path string) (spec.Spec, error) {
