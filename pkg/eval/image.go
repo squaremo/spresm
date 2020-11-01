@@ -6,12 +6,27 @@ import (
 	"fmt"
 	"os/exec"
 
-	"sigs.k8s.io/kustomize/kyaml/fn/framework"
 	"sigs.k8s.io/kustomize/kyaml/kio"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 
 	"github.com/squaremo/spresm/pkg/spec"
 )
+
+// debug
+// import (
+// 	"io"
+// 	"os"
+// )
+
+// the YAML encoder in kyaml/yaml is an alias for pkg.in/yaml.v3 and
+// does not use json struct tags; the ResourceList type in
+// kyaml/.../framework doesn't have json _or_ yaml tags.
+type ResourceList struct {
+	Kind           string      `yaml:"kind"`
+	FunctionConfig interface{} `yaml:"functionConfig"`
+	// this will always be empty, but what the heck.
+	Items []*yaml.RNode `yaml:"items"`
+}
 
 // evalImage evaluates a spec with the kind "Image", meaning run an
 // image to generate the YAMLs.
@@ -23,7 +38,13 @@ func evalImage(s spec.Spec) ([]*yaml.RNode, error) {
 	cmd := exec.Command("docker", args...)
 
 	in := &bytes.Buffer{}
-	input := &framework.ResourceList{}
+	// to debug: uncomment and use as arg to NewEncoder below
+	// tee := io.MultiWriter(in, os.Stderr)
+	input := &ResourceList{
+		Kind:           "ResourceList",
+		FunctionConfig: s.Image.FunctionConfig,
+		Items:          []*yaml.RNode{},
+	}
 	if err := yaml.NewEncoder(in).Encode(input); err != nil {
 		return nil, err
 	}
