@@ -52,9 +52,12 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	writeBackSpec := false
+
 	// if --edit, extract the package config and present it for
 	// editing.
 	if flags.edit {
+		writeBackSpec = true
 		config := updatedSpec.Config()
 		configReader, err := editConfig(config)
 		if err != nil {
@@ -62,11 +65,6 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 		}
 		if err := yaml.NewDecoder(configReader).Decode(config); err != nil {
 			return fmt.Errorf("unable to re-read config after editing: %w", err)
-		}
-		if specPath, err := writeSpec(dir, updatedSpec); err != nil {
-			return err
-		} else {
-			fmt.Fprintf(os.Stderr, "Spec file written back to %s\n", specPath)
 		}
 	}
 
@@ -103,7 +101,19 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return destRW.Write(merged)
+	if err = destRW.Write(merged); err != nil {
+		return fmt.Errorf("failed to write merged files back to working directory: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "Merged files written to %s\n", dir)
+
+	if writeBackSpec {
+		if specPath, err := writeSpec(dir, updatedSpec); err != nil {
+			return err
+		} else {
+			fmt.Fprintf(os.Stderr, "Updated spec file written to %s\n", specPath)
+		}
+	}
+	return nil
 }
 
 func getSpecFromGitHead(repo *git.Repository, path string) (spec.Spec, error) {
