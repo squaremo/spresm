@@ -28,11 +28,13 @@ func newUpdateCommand() *cobra.Command {
 }
 
 type updateFlags struct {
-	edit bool
+	edit    bool   // edit the spec
+	version string // change the version
 }
 
 func (flags *updateFlags) init(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&flags.edit, "edit", false, "present the package config for editing before updating")
+	cmd.Flags().StringVar(&flags.version, "version", "", "change the package version to this value")
 }
 
 func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
@@ -53,6 +55,11 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 	}
 
 	writeBackSpec := false
+
+	if flags.version != "" {
+		writeBackSpec = true
+		updatedSpec.Version = flags.version
+	}
 
 	// if --edit, extract the package config and present it for
 	// editing.
