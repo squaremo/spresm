@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/kustomize/kyaml/kio"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
@@ -31,12 +32,14 @@ type updateFlags struct {
 	edit      bool   // edit the spec
 	version   string // change the version
 	overwrite bool   // overwrite the files in the local dir, rather than merging
+	base      string // use this ref for the base revision when merging
 }
 
 func (flags *updateFlags) init(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&flags.edit, "edit", false, "present the package config for editing before updating")
 	cmd.Flags().BoolVar(&flags.overwrite, "overwrite", false, "overwrite files rather than attempting a 3-way merge")
 	cmd.Flags().StringVar(&flags.version, "version", "", "change the package version to this value")
+	cmd.Flags().StringVar(&flags.base, "base", "HEAD", "use this git ref for the base revision when merging")
 }
 
 func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
@@ -84,7 +87,7 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 		if err = destW.Write(updated); err != nil {
 			return fmt.Errorf("failed to write files back to directory %s: %w", dir, err)
 		}
-
+		// fall through to writing the spec back
 	} else {
 
 		// This will do a three way merge between:
@@ -99,7 +102,7 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("expected git repo at %s: %w", dir, err)
 		}
-		origSpec, err := getSpecFromGitHead(repo, filepath.Join(dir, Spresmfile))
+		origSpec, err := getSpecFromGitRef(repo, flags.base, filepath.Join(dir, Spresmfile))
 		if err != nil {
 			return fmt.Errorf("could not get spec from git repo: %w", err)
 		}
@@ -141,19 +144,19 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func getSpecFromGitHead(repo *git.Repository, path string) (spec.Spec, error) {
+func getSpecFromGitRef(repo *git.Repository, ref, path string) (spec.Spec, error) {
 	var spec spec.Spec
 
-	headRef, err := repo.Head()
+	baseRef, err := repo.Reference(plumbing.ReferenceName(ref), true)
 	if err != nil {
-		return spec, fmt.Errorf("could not reasolve HEAD ref: %w", err)
+		return spec, fmt.Errorf("could not resolve base ref %q: %w", ref, err)
 	}
-	headCommit, err := repo.CommitObject(headRef.Hash())
+	baseCommit, err := repo.CommitObject(baseRef.Hash())
 	if err != nil {
 		return spec, fmt.Errorf("could not get commit from HEAD ref: %w", err)
 	}
 
-	tree, err := headCommit.Tree()
+	tree, err := baseCommit.Tree()
 	if err != nil {
 		return spec, fmt.Errorf("could not obtain tree for HEAD commit: %w", err)
 	}
