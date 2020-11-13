@@ -65,12 +65,11 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 	// editing.
 	if flags.edit {
 		writeBackSpec = true
-		config := updatedSpec.Config()
-		configReader, err := editConfig(config)
+		configReader, err := editConfig(updatedSpec.Config())
 		if err != nil {
 			return err
 		}
-		if err := yaml.NewDecoder(configReader).Decode(config); err != nil {
+		if err := updatedSpec.ReadConfig(configReader); err != nil {
 			return fmt.Errorf("unable to re-read config after editing: %w", err)
 		}
 	}

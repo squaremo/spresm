@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 
 	"github.com/squaremo/spresm/pkg/eval"
 	"github.com/squaremo/spresm/pkg/spec"
@@ -59,16 +58,15 @@ func (flags *importHelmChartFlags) run(cmd *cobra.Command, args []string) error 
 	}
 	fmt.Fprintf(os.Stderr, "chart found %q\n", chart.Name())
 
-	s.Helm = &spec.HelmArgs{Values: chart.Values}
 	s.Helm.Release.Name = filepath.Base(dir)
 	s.Helm.Release.Namespace = flags.namespace
 
-	valuesReader, err := editConfig(s.Helm)
+	valuesReader, err := editConfig(&spec.HelmArgs{Values: chart.Values})
 	if err != nil {
 		return err
 	}
 
-	if err := yaml.NewDecoder(valuesReader).Decode(s.Helm); err != nil {
+	if err := s.ReadConfig(valuesReader); err != nil {
 		return fmt.Errorf("unable to re-read config after editing: %w", err)
 	}
 
