@@ -75,16 +75,26 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	destRW := kio.LocalPackageReadWriter{
+		PackagePath: dir,
+		// Just to be explicit. If overwriting, we want to delete
+		// files that no longer feature in the output. If merging,
+		// we'll be deciding for each resource whether it stays or
+		// goes in the merged results; so again, if there's nothing
+		// left in a file it can be deleted.
+		NoDeleteFiles: false,
+	}
+	dest, err := destRW.Read()
+	if err != nil {
+		return fmt.Errorf("could not parse local files: %w", err)
+	}
+
 	if flags.overwrite {
 		updated, err := eval.Eval(updatedSpec)
 		if err != nil {
 			return fmt.Errorf("could not eval local spec: %w", err)
 		}
-		destW := kio.LocalPackageReadWriter{
-			PackagePath:   dir,
-			NoDeleteFiles: false, // just to be explicit
-		}
-		if err = destW.Write(updated); err != nil {
+		if err = destRW.Write(updated); err != nil {
 			return fmt.Errorf("failed to write files back to directory %s: %w", dir, err)
 		}
 		// fall through to writing the spec back
@@ -100,11 +110,20 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 			DetectDotGit: true,
 		})
 		if err != nil {
+			fmt.Fprintf(os.Stderr, `
+If this is not a git repo, use --overwrite to overwrite
+files rather than merging.
+`)
 			return fmt.Errorf("expected git repo at %s: %w", dir, err)
 		}
 		origSpec, err := getSpecFromGitRef(repo, flags.base, filepath.Join(dir, Spresmfile))
 		if err != nil {
-			return fmt.Errorf("could not get spec from git repo: %w", err)
+			fmt.Fprintf(os.Stderr, `
+Ref %q does not exist; if there is no spec
+committed, you can use --overwrite to overwrite
+files rather than merging.
+`)
+			return fmt.Errorf("could not get spec from git repo ref %q: %w", flags.base, err)
 		}
 
 		updated, err := eval.Eval(updatedSpec)
@@ -113,15 +132,7 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 		}
 		orig, err := eval.Eval(origSpec)
 		if err != nil {
-			return fmt.Errorf("could not eval local spec: %w", err)
-		}
-
-		destRW := kio.LocalPackageReadWriter{
-			PackagePath: dir,
-		}
-		dest, err := destRW.Read()
-		if err != nil {
-			return fmt.Errorf("could not parse local files: %w", err)
+			return fmt.Errorf("could not eval base spec: %w", err)
 		}
 
 		merged, err := merge.Merge(dest, orig, updated)
