@@ -28,12 +28,14 @@ func newUpdateCommand() *cobra.Command {
 }
 
 type updateFlags struct {
-	edit    bool   // edit the spec
-	version string // change the version
+	edit      bool   // edit the spec
+	version   string // change the version
+	overwrite bool   // overwrite the files in the local dir, rather than merging
 }
 
 func (flags *updateFlags) init(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&flags.edit, "edit", false, "present the package config for editing before updating")
+	cmd.Flags().BoolVar(&flags.overwrite, "overwrite", false, "overwrite files rather than attempting a 3-way merge")
 	cmd.Flags().StringVar(&flags.version, "version", "", "change the package version to this value")
 }
 
@@ -42,11 +44,6 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 		return errors.New("update expected exactly one argument")
 	}
 	dir := args[0]
-
-	// This will do a three way merge between:
-	//  - the resources in the working directory (`dest`)
-	//  - the resources as previously defined (`orig`)
-	//  - the resources as defined by the updated spec (`updated`)
 
 	// get the spec as it is in the file system
 	updatedSpec, err := getSpec(dir)
@@ -75,43 +72,64 @@ func (flags *updateFlags) run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// get the spec as it is in HEAD
-	repo, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{
-		DetectDotGit: true,
-	})
-	if err != nil {
-		return fmt.Errorf("expected git repo at %s: %w", dir, err)
-	}
-	origSpec, err := getSpecFromGitHead(repo, filepath.Join(dir, Spresmfile))
-	if err != nil {
-		return fmt.Errorf("could not get spec from git repo: %w", err)
-	}
+	if flags.overwrite {
+		updated, err := eval.Eval(updatedSpec)
+		if err != nil {
+			return fmt.Errorf("could not eval local spec: %w", err)
+		}
+		destW := kio.LocalPackageReadWriter{
+			PackagePath:   dir,
+			NoDeleteFiles: false, // just to be explicit
+		}
+		if err = destW.Write(updated); err != nil {
+			return fmt.Errorf("failed to write files back to directory %s: %w", dir, err)
+		}
 
-	updated, err := eval.Eval(updatedSpec)
-	if err != nil {
-		return fmt.Errorf("could not eval local spec: %w", err)
-	}
-	orig, err := eval.Eval(origSpec)
-	if err != nil {
-		return fmt.Errorf("could not eval local spec: %w", err)
-	}
+	} else {
 
-	destRW := kio.LocalPackageReadWriter{
-		PackagePath: dir,
-	}
-	dest, err := destRW.Read()
-	if err != nil {
-		return fmt.Errorf("could not parse local files: %w", err)
-	}
+		// This will do a three way merge between:
+		//  - the resources in the working directory (`dest`)
+		//  - the resources as previously defined (`orig`)
+		//  - the resources as defined by the updated spec (`updated`)
 
-	merged, err := merge.Merge(dest, orig, updated)
-	if err != nil {
-		return err
+		// get the spec as it is in HEAD
+		repo, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{
+			DetectDotGit: true,
+		})
+		if err != nil {
+			return fmt.Errorf("expected git repo at %s: %w", dir, err)
+		}
+		origSpec, err := getSpecFromGitHead(repo, filepath.Join(dir, Spresmfile))
+		if err != nil {
+			return fmt.Errorf("could not get spec from git repo: %w", err)
+		}
+
+		updated, err := eval.Eval(updatedSpec)
+		if err != nil {
+			return fmt.Errorf("could not eval local spec: %w", err)
+		}
+		orig, err := eval.Eval(origSpec)
+		if err != nil {
+			return fmt.Errorf("could not eval local spec: %w", err)
+		}
+
+		destRW := kio.LocalPackageReadWriter{
+			PackagePath: dir,
+		}
+		dest, err := destRW.Read()
+		if err != nil {
+			return fmt.Errorf("could not parse local files: %w", err)
+		}
+
+		merged, err := merge.Merge(dest, orig, updated)
+		if err != nil {
+			return err
+		}
+		if err = destRW.Write(merged); err != nil {
+			return fmt.Errorf("failed to write merged files back to working directory: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "Merged files written to %s\n", dir)
 	}
-	if err = destRW.Write(merged); err != nil {
-		return fmt.Errorf("failed to write merged files back to working directory: %w", err)
-	}
-	fmt.Fprintf(os.Stderr, "Merged files written to %s\n", dir)
 
 	if writeBackSpec {
 		if specPath, err := writeSpec(dir, updatedSpec); err != nil {
