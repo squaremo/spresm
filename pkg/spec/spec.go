@@ -29,16 +29,13 @@ const (
 func (s *Spec) Init(k Kind) {
 	s.APIVersion = APIVersion
 	s.Kind = k
-}
-
-func (s *Spec) Config() interface{} {
-	switch s.Kind {
+	switch k {
 	case ChartKind:
-		return s.Helm
+		s.Helm = &HelmArgs{}
 	case ImageKind:
-		return s.Image
-	default: // TODO: other kinds
-		return nil
+		s.Image = &ImageArgs{}
+	default:
+		// git not supported yet
 	}
 }
 
