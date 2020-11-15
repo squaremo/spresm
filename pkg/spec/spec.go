@@ -8,7 +8,7 @@ type Spec struct {
 	Kind       Kind   `json:"kind" yaml:"kind"`
 
 	// the upstream source; might be an image repository, or a git URL
-	Source string `json:"source",yaml:"source"`
+	Source string `json:"source" yaml:"source"`
 	// the version of the source that's to be evaluated
 	Version string `json:"version" yaml:"version"`
 
