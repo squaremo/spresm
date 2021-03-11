@@ -17,6 +17,10 @@ import (
 	"github.com/squaremo/spresm/pkg/spec"
 )
 
+const (
+	defaultEditor = "vi"
+)
+
 func newImportCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "import",
@@ -101,8 +105,7 @@ func editConfig(initialConfig interface{}) (io.Reader, error) {
 	}
 	tmpvalues.Close()
 
-	// FIXME deal with no env entry for EDITOR
-	c := exec.Command("sh", "-c", "$EDITOR "+tmpvalues.Name())
+	c := exec.Command("sh", "-c", editCommand(tmpvalues.Name()))
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	c.Stdin = os.Stdin
@@ -116,4 +119,12 @@ func editConfig(initialConfig interface{}) (io.Reader, error) {
 		return nil, fmt.Errorf("unable to re-read config file %s after editing: %w", tmpvalues.Name(), err)
 	}
 	return bytes.NewBuffer(valuesBytes), nil
+}
+
+func editCommand(s string) string {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = defaultEditor
+	}
+	return editor + " " + s
 }
